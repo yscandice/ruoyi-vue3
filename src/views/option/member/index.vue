@@ -57,7 +57,12 @@
 
     <el-table v-loading="loading" :data="memberList" @selection-change="handleSelectionChange">
       <el-table-column type="selection" width="50" align="center" />
-      <el-table-column label="邮箱" align="left" key="email" prop="email" v-if="columns.email.visible" min-width="200" :show-overflow-tooltip="true" />
+      <el-table-column label="邮箱" align="left" key="email" v-if="columns.email.visible" min-width="200" :show-overflow-tooltip="true">
+        <template #default="scope">
+          <a v-if="checkPermi(['option:member:query'])" class="link-type" style="cursor:pointer" @click="handleDetail(scope.row)">{{ scope.row.email }}</a>
+          <span v-else>{{ scope.row.email }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="昵称" align="center" key="nickName" prop="nickName" v-if="columns.nickName.visible" :show-overflow-tooltip="true" />
       <el-table-column label="身份" align="center" key="level" v-if="columns.level.visible" width="90">
         <template #default="scope">
@@ -99,12 +104,14 @@
       <el-table-column label="注册IP" align="center" key="registerIp" prop="registerIp" v-if="columns.registerIp.visible" width="130" />
       <el-table-column label="操作" align="center" width="160" fixed="right" class-name="small-padding fixed-width">
         <template #default="scope">
+          <el-button link type="primary" icon="View" @click="handleDetail(scope.row)" v-hasPermi="['option:member:query']">详情</el-button>
           <el-button link type="primary" icon="Timer" @click="handleTrial(scope.row)" v-hasPermi="['option:member:edit']">体验期</el-button>
         </template>
       </el-table-column>
     </el-table>
     <pagination v-show="total > 0" :total="total" v-model:page="queryParams.pageNum" v-model:limit="queryParams.pageSize" @pagination="getList" />
 
+    <member-detail ref="detailRef" />
     <trial-dialog ref="trialDialogRef" @success="refresh" />
   </div>
 </template>
@@ -112,7 +119,9 @@
 <script setup name="OptionMember">
 import * as echarts from "echarts"
 import { listMember, getMemberStats } from "@/api/option/member"
+import { checkPermi } from "@/utils/permission"
 import TrialDialog from "./trialDialog"
+import MemberDetail from "./detail"
 
 const { proxy } = getCurrentInstance()
 const { option_member_level, sys_normal_disable } = proxy.useDict("option_member_level", "sys_normal_disable")
@@ -244,6 +253,11 @@ function handleExport() {
 /** 批量调整体验期 */
 function handleBatchTrial() {
   proxy.$refs["trialDialogRef"].open(selection.value)
+}
+
+/** 会员详情 */
+function handleDetail(row) {
+  proxy.$refs["detailRef"].open(row.userId)
 }
 
 /** 单个调整体验期 */
