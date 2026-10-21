@@ -19,6 +19,9 @@
             <el-date-picker v-model="dateRange" value-format="YYYY-MM-DD" type="daterange" range-separator="-" start-placeholder="开始日期" end-placeholder="结束日期"></el-date-picker>
           </el-form-item>
           <el-form-item>
+            <el-checkbox v-model="showMember" @change="handleQuery">显示会员</el-checkbox>
+          </el-form-item>
+          <el-form-item>
             <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
             <el-button icon="Refresh" @click="resetQuery">重置</el-button>
           </el-form-item>
@@ -42,6 +45,8 @@
           </el-col>
           <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" :columns="columns" storageKey="xxxxxxxx"></right-toolbar>
         </el-row>
+
+        <el-alert v-if="showMember" type="warning" show-icon :closable="false" class="mb8" title="已显示网站会员。会员的停用、重置密码请到「会员管理 → 会员列表」操作，以保证会员档案和登录账号同步。" />
 
         <el-table v-loading="loading" :data="userList" @selection-change="handleSelectionChange">
           <el-table-column type="selection" width="50" align="center" />
@@ -206,6 +211,7 @@ const multiple = ref(true)
 const total = ref(0)
 const title = ref("")
 const dateRange = ref([])
+const showMember = ref(false)
 const deptOptions = ref(undefined)
 const enabledDeptOptions = ref(undefined)
 const initPassword = ref(undefined)
@@ -245,7 +251,14 @@ const { queryParams, form, rules } = toRefs(data)
 /** 查询用户列表 */
 function getList() {
   loading.value = true
-  listUser(proxy.addDateRange(queryParams.value, dateRange.value)).then(res => {
+  const query = proxy.addDateRange(queryParams.value, dateRange.value)
+  // 默认不返回网站会员，勾选“显示会员”时带 params[showMember]=true
+  if (showMember.value) {
+    query.params.showMember = true
+  } else {
+    delete query.params.showMember
+  }
+  listUser(query).then(res => {
     loading.value = false
     userList.value = res.rows
     total.value = res.total
@@ -288,6 +301,7 @@ function handleQuery() {
 /** 重置按钮操作 */
 function resetQuery() {
   dateRange.value = []
+  showMember.value = false
   proxy.resetForm("queryRef")
   queryParams.value.deptId = undefined
   proxy.$refs.deptTreeRef.setCurrentKey(null)
