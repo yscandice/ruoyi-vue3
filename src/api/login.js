@@ -12,7 +12,9 @@ export function login(username, password, code, uuid) {
     url: '/login',
     headers: {
       isToken: false,
-      repeatSubmit: false
+      repeatSubmit: false,
+      // 后台登录标识：会员账号登录后台时后端直接提示“该账号无后台权限”
+      'X-Client-Type': 'admin'
     },
     method: 'post',
     data: data
