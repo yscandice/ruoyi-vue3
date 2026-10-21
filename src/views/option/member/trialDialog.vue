@@ -38,7 +38,7 @@
 
 <script setup name="TrialDialog">
 import { extendTrial, batchExtendTrial } from "@/api/option/member"
-import { parseTime } from "@/utils/ruoyi"
+import { parseCst, formatCst } from "@/utils/option"
 
 const { proxy } = getCurrentInstance()
 const emit = defineEmits(["success"])
@@ -73,11 +73,11 @@ const afterDate = computed(() => {
   const base = member.value.trialEndTime
   const hours = form.value.extendHours
   if (!base || !Number.isInteger(hours)) return null
-  const d = new Date(String(base).replace(" ", "T"))
-  if (isNaN(d.getTime())) return null
+  const d = parseCst(base)
+  if (!d) return null
   return new Date(d.getTime() + hours * 3600 * 1000)
 })
-const afterTime = computed(() => afterDate.value ? parseTime(afterDate.value) : "")
+const afterTime = computed(() => afterDate.value ? formatCst(afterDate.value) : "")
 const afterExpired = computed(() => afterDate.value ? afterDate.value.getTime() <= Date.now() : false)
 
 /** 打开弹窗：传单个会员或会员数组（批量） */

@@ -102,26 +102,49 @@
         </template>
       </el-table-column>
       <el-table-column label="注册IP" align="center" key="registerIp" prop="registerIp" v-if="columns.registerIp.visible" width="130" />
-      <el-table-column label="操作" align="center" width="160" fixed="right" class-name="small-padding fixed-width">
+      <el-table-column label="操作" align="center" width="210" fixed="right" class-name="small-padding fixed-width">
         <template #default="scope">
           <el-button link type="primary" icon="View" @click="handleDetail(scope.row)" v-hasPermi="['option:member:query']">详情</el-button>
           <el-button link type="primary" icon="Timer" @click="handleTrial(scope.row)" v-hasPermi="['option:member:edit']">体验期</el-button>
+          <el-dropdown v-if="hasMoreAction" class="ml10" @command="(command) => handleCommand(command, scope.row)">
+            <el-button link type="primary" icon="DArrowRight">更多</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="paid" icon="Medal" v-if="checkPermi(['option:member:edit'])">设置付费</el-dropdown-item>
+                <el-dropdown-item command="status" :icon="scope.row.status === '0' ? 'CircleClose' : 'CircleCheck'" v-if="checkPermi(['option:member:edit'])">{{ scope.row.status === '0' ? '停用' : '启用' }}</el-dropdown-item>
+                <el-dropdown-item command="resetPwd" icon="Key" v-if="checkPermi(['option:member:resetPwd'])">重置密码</el-dropdown-item>
+                <el-dropdown-item command="online" icon="SwitchButton" v-if="checkPermi(['option:member:forceLogout'])">强制下线</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </template>
       </el-table-column>
     </el-table>
     <pagination v-show="total > 0" :total="total" v-model:page="queryParams.pageNum" v-model:limit="queryParams.pageSize" @pagination="getList" />
 
-    <member-detail ref="detailRef" />
-    <trial-dialog ref="trialDialogRef" @success="refresh" />
+    <member-detail ref="detailRef">
+      <template #actions="{ member }">
+        <el-button type="primary" plain size="small" icon="Timer" @click="handleTrial(member)" v-hasPermi="['option:member:edit']">调整体验期</el-button>
+        <el-button type="warning" plain size="small" icon="Medal" @click="handleCommand('paid', member)" v-hasPermi="['option:member:edit']">设置付费</el-button>
+        <el-button :type="member.status === '0' ? 'danger' : 'success'" plain size="small" :icon="member.status === '0' ? 'CircleClose' : 'CircleCheck'" @click="handleCommand('status', member)" v-hasPermi="['option:member:edit']">{{ member.status === '0' ? '停用' : '启用' }}</el-button>
+        <el-button plain size="small" icon="Key" @click="handleCommand('resetPwd', member)" v-hasPermi="['option:member:resetPwd']">重置密码</el-button>
+        <el-button plain size="small" icon="SwitchButton" @click="handleCommand('online', member)" v-hasPermi="['option:member:forceLogout']">强制下线</el-button>
+      </template>
+    </member-detail>
+    <trial-dialog ref="trialDialogRef" @success="handleChanged" />
+    <paid-dialog ref="paidDialogRef" @success="handleChanged" />
   </div>
 </template>
 
 <script setup name="OptionMember">
 import * as echarts from "echarts"
-import { listMember, getMemberStats } from "@/api/option/member"
+import { listMember, getMemberStats, changeMemberStatus, resetMemberPwd, forceLogoutMember } from "@/api/option/member"
 import { checkPermi } from "@/utils/permission"
+import { formatRemaining, MEMBER_PWD_PATTERN, MEMBER_PWD_MESSAGE } from "@/utils/option"
 import TrialDialog from "./trialDialog"
 import MemberDetail from "./detail"
+import PaidDialog from "./paidDialog"
+
 
 const { proxy } = getCurrentInstance()
 const { option_member_level, sys_normal_disable } = proxy.useDict("option_member_level", "sys_normal_disable")
@@ -136,6 +159,7 @@ const dateRange = ref([])
 const trialRange = ref([])
 const stats = ref({})
 const chartRef = ref(null)
+const hasMoreAction = checkPermi(["option:member:edit"]) || checkPermi(["option:member:resetPwd"]) || checkPermi(["option:member:forceLogout"])
 let chart = null
 
 const statCards = [
@@ -173,12 +197,6 @@ const data = reactive({
 })
 
 const { queryParams } = toRefs(data)
-
-/** 体验剩余时长 */
-function formatRemaining(seconds) {
-  if (seconds >= 3600) return "约 " + Math.round(seconds / 3600) + " 小时"
-  return Math.max(1, Math.floor(seconds / 60)) + " 分钟"
-}
 
 /** 组装查询参数（注册时间 + 体验到期两个范围） */
 function buildQuery() {
@@ -263,6 +281,75 @@ function handleDetail(row) {
 /** 单个调整体验期 */
 function handleTrial(row) {
   proxy.$refs["trialDialogRef"].open(row)
+}
+
+/** 操作完成：刷新列表、统计和已打开的详情 */
+function handleChanged() {
+  refresh()
+  const detail = proxy.$refs["detailRef"]
+  detail && detail.refresh()
+}
+
+/** 更多操作 */
+function handleCommand(command, row) {
+  switch (command) {
+    case "paid":
+      proxy.$refs["paidDialogRef"].open(row)
+      break
+    case "status":
+      handleStatus(row)
+      break
+    case "resetPwd":
+      handleResetPwd(row)
+      break
+    case "online":
+      handleForceLogout(row)
+      break
+    default:
+      break
+  }
+}
+
+/** 停用 / 启用 */
+function handleStatus(row) {
+  const disable = row.status === "0"
+  const text = disable ? "停用" : "启用"
+  const tip = disable ? '确认要停用"' + row.email + '"吗？停用后会员会立即下线，且无法再登录。' : '确认要启用"' + row.email + '"吗？'
+  proxy.$modal.confirm(tip).then(() => {
+    return changeMemberStatus(row.userId, disable ? "1" : "0")
+  }).then(() => {
+    proxy.$modal.msgSuccess(text + "成功")
+    handleChanged()
+  }).catch(() => {})
+}
+
+/** 重置密码 */
+function handleResetPwd(row) {
+  proxy.$prompt('请输入"' + row.email + '"的新密码', "重置密码", {
+    confirmButtonText: "确定",
+    cancelButtonText: "取消",
+    closeOnClickModal: false,
+    inputType: "password",
+    inputPlaceholder: "8–20 位，同时包含字母和数字",
+    inputValidator: value => MEMBER_PWD_PATTERN.test(value || "") || MEMBER_PWD_MESSAGE
+  }).then(({ value }) => {
+    return proxy.$modal.confirm("重置后会员的所有登录会立即失效，需要用新密码重新登录，确认重置吗？").then(() => value)
+  }).then(value => {
+    return resetMemberPwd(row.userId, value)
+  }).then(() => {
+    proxy.$modal.msgSuccess("重置成功，会员需用新密码重新登录")
+    handleChanged()
+  }).catch(() => {})
+}
+
+/** 强制下线 */
+function handleForceLogout(row) {
+  proxy.$modal.confirm('确认要强制"' + row.email + '"下线吗？').then(() => {
+    return forceLogoutMember(row.userId)
+  }).then(res => {
+    proxy.$modal.msgSuccess("已强制下线 " + (res.count ?? 0) + " 个会话")
+    handleChanged()
+  }).catch(() => {})
 }
 
 function resizeChart() {

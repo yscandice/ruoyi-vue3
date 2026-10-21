@@ -105,7 +105,7 @@
 import { getMember } from "@/api/option/member"
 import { list as listOperlog } from "@/api/monitor/operlog"
 import auth from "@/plugins/auth"
-import { parseTime } from "@/utils/ruoyi"
+import { formatBeijing, formatRemaining } from "@/utils/option"
 
 const { proxy } = getCurrentInstance()
 const { option_member_level, sys_normal_disable, sys_common_status } = proxy.useDict("option_member_level", "sys_normal_disable", "sys_common_status")
@@ -163,22 +163,6 @@ const actionRow = computed(() => ({
   online: sessions.value > 0
 }))
 
-/** 体验剩余时长 */
-function formatRemaining(seconds) {
-  if (seconds >= 3600) return "约 " + Math.round(seconds / 3600) + " 小时"
-  return Math.max(1, Math.floor(seconds / 60)) + " 分钟"
-}
-
-/** ISO 时间转北京时间显示 */
-function formatBeijing(value) {
-  if (!value) return "-"
-  const d = new Date(value)
-  if (isNaN(d.getTime())) return value
-  return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false
-  }).format(d).replace(/\//g, "-")
-}
-
 function describeOper(row) {
   const m = String(row.operUrl || "").match(/\/option\/member\/(?:\d+\/)?([A-Za-z]+)(?:\?|$)/)
   const action = /\/trial\/batch/.test(String(row.operUrl || "")) ? "批量调整体验期" : (m ? OPER_ACTIONS[m[1]] : "")
@@ -224,7 +208,11 @@ function open(id) {
   load()
 }
 
-defineExpose({ open, refresh: load })
+function refresh() {
+  if (visible.value) load()
+}
+
+defineExpose({ open, refresh })
 </script>
 
 <style scoped>
